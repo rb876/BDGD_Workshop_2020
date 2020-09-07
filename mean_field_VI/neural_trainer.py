@@ -2,14 +2,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import layer_utils as utils
+import mean_field_VI.utils as utils
 
 class NeuralTrainer(nn.Module):
     def __init__(self):
         super().__init__()
-
-    def forward(self, x, grad, num_samples=1):
-        raise NotImplementedError
 
     def optimise(self, train_loader, epochs=100, batch_size=64, initial_lr=1e-3, weight_decay=1e-3):
 
@@ -25,12 +22,12 @@ class NeuralTrainer(nn.Module):
                 self.train()
                 optimizer.zero_grad()
                 data, grad, target = utils.to_gpu(data, grad, target)
-                x_pred = self.forward(data, grad, num_samples=1)
-                step_loss, kl = self._compute_loss(target.squeeze(), x_pred.squeeze(), len(target), len(train_loader.dataset))
+                x_pred, var = self.forward(data, grad, num_samples=1)
+                step_loss, kl = self.compute_loss(target.squeeze(), x_pred.squeeze(), len(target), len(train_loader.dataset), var)
                 step_loss.backward()
                 optimizer.step()
 
-                rmse, psnr = self._evaluate_performance(target, x_pred)
+                rmse, psnr = self.evaluate_performance(target, x_pred)
                 losses.append(step_loss.cpu().item())
                 kls.append(kl.cpu().item())
                 rmses.append(rmse)
@@ -45,27 +42,24 @@ class NeuralTrainer(nn.Module):
         losses, performances = self._evaluate(val_loader, test_bsz)
         return np.hstack(losses), np.hstack(performances)
 
-    def _compute_loss(self, x, x_pred, batch_size, data_size):
-        raise NotImplementedError
+    def compute_log_likelihood(self, x, x_pred, var):
+        return torch.sum(utils.gaussian_log_density(inputs=utils._squeeze(x), mean=utils._squeeze(x_pred), variance=utils._squeeze(var)), dim=0)
 
-    def _compute_log_likelihood(self, x, x_pred, var):
-        return torch.sum(utils.gaussian_log_density(inputs=utils._squeeze(x), mean=utils._squeeze(x_pred), variance=var), dim=0)
-
-    def _evaluate_performance(self, x, x_pred):
+    def evaluate_performance(self, x, x_pred):
         from math import log10
         return (torch.sqrt(torch.mean((x - x_pred) ** 2)).cpu().item(), 10
                 * log10(1 / torch.mean((x - x_pred) ** 2)))
 
-    def _evaluate(self, val_loader, batch_size):
+    def evaluate(self, val_loader, batch_size):
         losses, performances = [], []
         self.eval()
         with torch.no_grad():
             for (data, grad, target) in val_loader:
                 data, grad, target = utils.to_gpu(data, grad, target)
                 x_pred_samples = self.forward(data, grad, num_samples=1)
-                loss = self._compute_log_likelihood(target, x_pred_samples, self.log_noise.exp()**2)
+                loss = self.compute_log_likelihood(target, x_pred_samples, self.log_noise.exp()**2)
                 avg_loss = loss / len(target)
-                performance = self._evaluate_performance(target, x_pred_samples)[1]
+                performance = self.evaluate_performance(target, x_pred_samples)[1]
                 losses.append(avg_loss.cpu().item())
                 performances.append(performance)
 

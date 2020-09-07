@@ -21,7 +21,7 @@ def gaussian_kl_diag(mean1, variance1, mean2, variance2):
 def gaussian_log_density(inputs, mean, variance=1):
     d = inputs.shape[-1]
     xc = inputs - mean
-    return -0.5 * (torch.sum((xc **2) / variance, dim=-1) + torch.sum(torch.log(variance), dim=-1))
+    return -0.5 * (torch.sum((xc **2) / variance, dim=-1) + torch.sum(torch.log(variance), dim=-1) + d*np.log(2*np.pi))
 
 '''
     tensor monipulation

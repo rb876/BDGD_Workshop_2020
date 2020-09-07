@@ -25,30 +25,12 @@ class GenTrainSamples:
         phantom = phantom / phantom.max()
         return phantom
 
-class BrainWeb:
-    def __init__(self, load_all=True):
-        self.brains = self._load_brainweb(load_all=load_all)
-
-    def _load_brainweb(self, load_all):
-        try:
-            brains = np.load('./datasets/brain.npy')
-        except:
-            raise Exception('Make sure the BrainWeb data is at ./datasets/brain.npy!')
-        if not load_all:
-            idx = list(np.arange(10, 160, 10))
-            return brains[idx, :, :]
-        else:
-            return brains
-
 class DatasetConstructor:
-    def __init__(self, img_mode, train_size, brain=False, dataset_name=None):
+    def __init__(self, img_mode, train_size, dataset_name=None):
         self.img_mode = img_mode
         self.train_size = train_size
-        self.gen_train_samples = GenTrainSamples(img_mode.forward_model.space)
-        self.brain = brain
+        self.gen_train_samples = GenTrainSamples(img_mode.space)
         self.dataset_name = dataset_name
-        if brain:
-            self.brain_web = BrainWeb(load_all=False)
 
     def data(self):
         if self._is_data():
@@ -61,24 +43,12 @@ class DatasetConstructor:
 
     def _dataset(self):
         trainY, trainX, train_initX = self._get_train(num_reps=self.train_size, threads=4)
-        if self.brain:
-            testY, testX, test_initX = self._get_brain_test()
-        else:
-            testY, testX, test_initX  = self._get_train(num_reps=10, threads=4, test=True)
+        testY, testX, test_initX  = self._get_train(num_reps=10, threads=4, test=True)
         data = {'train': (trainY, trainX, train_initX),\
             'test': (testY, testX, test_initX), 'validation': (testY, testX, test_initX)}
         print('data generated -- training size {} \n'.format(self.train_size), flush=True)
         self._save_data(data)
         return data
-
-    def _get_brain_test(self):
-        Y_, X_, initX_ = [], [], []
-        for brain in self.brain_web.brains:
-            Y, X, initX = self.img_mode.sinogram(torch.from_numpy(brain).unsqueeze(dim=0))
-            Y_.append(Y.unsqueeze(dim=1))
-            X_.append(X.unsqueeze(dim=1))
-            initX_.append(initX.unsqueeze(dim=1))
-        return torch.cat(Y_), torch.cat(X_), torch.cat(initX_)
 
     def _get_train(self, num_reps=4e4, threads=4, test=False):
 
@@ -97,7 +67,7 @@ class DatasetConstructor:
             executor.map( sinogram_wrapper, [chunk for chunk in torch.split(phantom, batch_size)] )
 
         if test:
-            sl = torch.from_numpy(odl.phantom.shepp_logan(self.img_mode.forward_model.space, modified=True).asarray()).unsqueeze(dim=0)
+            sl = torch.from_numpy(odl.phantom.shepp_logan(self.img_mode.space, modified=True).asarray()).unsqueeze(dim=0)
             Y, X, initX = self.img_mode.sinogram(sl)
             Y_.append(Y.unsqueeze(dim=1)),
             X_.append(X.unsqueeze(dim=1)),

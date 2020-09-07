@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
-# forward model & dataset
+# forward block & dataset
 import odl
 from odl.contrib import torch as odl_torch
 from dataset_constructor import DatasetConstructor
@@ -27,7 +27,7 @@ from skimage.metrics import peak_signal_noise_ratio as compute_psnr
 
 # utils
 from utils import TrainVisualiser, next_step_update, get_stats, save_net
-import layer_utils as layer_utils
+import mean_field_VI.utils as block_utils
 
 def main():
 
@@ -43,8 +43,6 @@ def main():
                         help='dataset size')
     parser.add_argument('--pseudo_inverse_init', type = lambda x:bool(strtobool(x)), default=True,
                         help='initialise with pseudoinverse')
-    parser.add_argument('--brain', type = lambda x:bool(strtobool(x)), default=False,
-                        help='test set of brain images')
     parser.add_argument('--epochs', type=int, default=150,
                         help='number of epochs to train')
     parser.add_argument('--batch_size', type=int, default=128,
@@ -66,46 +64,42 @@ def main():
                         help='random seed')
 
     args = parser.parse_args()
-    layer_utils.set_gpu_mode(True)
+    block_utils.set_gpu_mode(True)
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
 
     use_cuda = not args.no_cuda and torch.cuda.is_available()
     device = torch.device('cuda' if use_cuda else 'cpu')
 
-    if args.img_mode is not None:
-        forward_model = ForwardModel()
+    if args.img_mode == SimpleCT.__name__:
+        img_mode = SimpleCT()
         half_size = args.size / 2
         space =  odl.uniform_discr([-half_size, -half_size],
                                    [half_size, half_size],
                                    [args.size, args.size], dtype='float32')
-        forward_model.space = space
+        img_mode.space = space
         geometry = odl.tomo.parallel_beam_geometry(space, num_angles=args.beam_num_angle)
-        forward_model.geometry = geometry
+        img_mode.geometry = geometry
         operator = odl.tomo.RayTransform(space, geometry)
         opnorm = odl.power_method_opnorm(operator)
-        forward_model.operator = odl_torch.OperatorModule( (1 / opnorm) * operator )
-        forward_model.adjoint = odl_torch.OperatorModule(operator.adjoint)
+        img_mode.operator = odl_torch.OperatorModule( (1 / opnorm) * operator )
+        img_mode.adjoint = odl_torch.OperatorModule(operator.adjoint)
         pseudoinverse = odl.tomo.fbp_op(operator)
         pseudoinverse = odl_torch.OperatorModule( pseudoinverse * opnorm )
-        forward_model.pseudoinverse = pseudoinverse
+        img_mode.pseudoinverse = pseudoinverse
 
         geometry_specs = 'full_view_sparse_' + str(args.beam_num_angle)
         dataset_name = 'dataset' + '_' + args.img_mode + '_' + str(args.size) \
-        + '_' + str(args.train_size) + '_' + geometry_specs + '_' \
-        + 'brain' + '_' + str(args.brain)
+        + '_' + str(args.train_size) + '_' + geometry_specs
 
-
-    if args.img_mode == SimpleCT.__name__:
-        img_mode = SimpleCT(forward_model)
-        data_constructor = DatasetConstructor(img_mode, train_size=args.train_size, brain=args.brain, dataset_name=dataset_name)
+        data_constructor = DatasetConstructor(img_mode, train_size=args.train_size, dataset_name=dataset_name)
         data = data_constructor.data()
     else:
         raise NotImplementedError
     dataset = DataSet(data, img_mode, args.pseudo_inverse_init)
 
     optim_parms = {'epochs':args.epochs, 'initial_lr':  args.initial_lr, 'batch_size': args.batch_size}
-    from hybrid_model import HybridModel as NeuralLearner
+    from blocks import BlockHetero as Block
 
     # results directory
     path = os.path.dirname(__file__)
@@ -119,11 +113,29 @@ def main():
         print('{}: {}'.format(key, val), flush=True)
     print('===========================\n', flush=True)
 
-    blocks_history = {'model': [], 'optimizer': []}
-    arch_args = {'arch': {'up':  [ [1, 16, 3, 1, 1],  [16, 32, 3, 1, 1]],
-                          'low': [ [1, 16, 3, 1, 1],  [16, 32, 3, 1, 1]],
-                          'cm':  [ [64, 32, 3, 1, 1], [32, 16, 3, 1, 1]] }}
-
+    blocks_history = {'block': [], 'optimizer': []}
+    arch_args = {
+      'mean': {
+        'upper': [
+          [1, 16, 3, 1, 1],
+          [16, 32, 3, 1, 1]
+        ],
+        'lower': [
+          [1, 16, 3, 1, 1],
+          [16, 32, 3, 1, 1]
+        ],
+        'common': [
+          [64, 32, 3, 1, 1],
+          [32, 16, 3, 1, 1],
+          [16, 1, 3, 1]
+        ]
+      },
+      'variance': [
+        [2, 16, 3, 1, 1],
+        [16, 8, 3, 1, 1],
+        [8, 1, 3, 1]
+      ]
+    }
     # savings training procedures
     filename = 'train_phase'
     filepath = os.path.join(dir_path, filename)
@@ -141,41 +153,29 @@ def main():
         train_loader = DataLoader(train_tensor, batch_size=args.batch_size, shuffle=True)
         val_loader = DataLoader(val_tensor, batch_size=args.val_batch_size, shuffle=True)
 
-        model = NeuralLearner(arch_args)
-        model = model.to(device)
-        model_path = os.path.join(dir_path, str(idx) + '.pt')
-        if os.path.exists(model_path):
-            model_loaded = True
-            model.load_state_dict(torch.load(model_path))
-            print('idx: {} model loaded!\npath to model:\n{}'.format(idx, model_path), flush=True)
-        else:
-            model_loaded = False
-            model.optimise(train_loader, **optim_parms)
-            save_net(model, os.path.join(dir_path, str(idx) + '.pt'))
-            print('idx: {} optimisation finished!'.format(idx), flush=True)
+        block = Block(arch_args)
+        block = block.to(device)
+        block.optimise(train_loader, **optim_parms)
 
         start = time.time()
-        info = next_step_update(dataset, train_tensor, model, device, flag='train')
+        info = next_step_update(dataset, train_tensor, block, device, flag='train')
         end = time.time()
         print('============= {} {:.4f} ============= \n'.format('training reconstruction', end-start), flush=True)
         for key in info.keys():
             print('{}: {} \n'.format(key, info[key]), flush=True)
 
         start = time.time()
-        info = next_step_update(dataset, val_tensor, model, device, flag='validation')
+        info = next_step_update(dataset, val_tensor, block, device, flag='validation')
         end = time.time()
         print('============= {} {:.4f} ============= \n'.format('validation reconstruction', end-start), flush=True)
         for key in info.keys():
             print('{}: {} \n'.format(key, info[key]), flush=True)
 
         vis.update(dataset, flag='validation')
-        blocks_history['model'].append(model)
+        blocks_history['block'].append(block)
 
         # reconstruction
         resonstruction_dir_path = os.path.join(dir_path, str(idx))
-        if model_loaded:
-            resonstruction_dir_path = os.path.join(dir_path, str(idx), 're-loaded')
-
         if not os.path.isdir(resonstruction_dir_path):
             os.makedirs(resonstruction_dir_path)
         get_stats(dataset, blocks_history, device, resonstruction_dir_path)

@@ -4,36 +4,6 @@ import numpy as np
 import torch
 from odl.contrib import torch as odl_torch
 
-class ImageModalityBase:
-    __metaclass__ = abc.ABCMeta
-
-    @abc.abstractmethod
-    def sinogram(self, phantom):
-        ''' Compute sinogram and pseudoinverse '''
-        return
-
-    @abc.abstractmethod
-    def grad(self, x, y):
-        ''' Compute grad of the data fitting term '''
-        return
-
-class SimpleCT(ImageModalityBase):
-    def __init__(self, forward_model):
-        self.forward_model = forward_model
-
-    def sinogram(self, phantom):
-        clean = self.forward_model.operator(phantom)
-        noise = []
-        for el in clean:
-            scale_factor = torch.mean(torch.abs(el))
-            noise.append(clean.data.new(el.size()).normal_(0, 1) * scale_factor * 0.01)
-        noisy = clean + torch.stack(noise)
-        fbp = self.forward_model.pseudoinverse(noisy)
-        return noisy, phantom, fbp
-
-    def grad(self, x, y):
-        return self.forward_model.adjoint(self.forward_model.operator(x) - y)
-
 class ForwardModel:
     def __init__(self):
         self.space = None
@@ -76,3 +46,20 @@ class ForwardModel:
     @pseudoinverse.setter
     def pseudoinverse(self, pseudoinverse):
         self.__pseudoinverse = pseudoinverse
+
+class SimpleCT(ForwardModel):
+    def __init__(self):
+        super().__init__()
+
+    def sinogram(self, phantom):
+        clean = self.operator(phantom)
+        noise = []
+        for el in clean:
+            scale_factor = torch.mean(torch.abs(el))
+            noise.append(clean.data.new(el.size()).normal_(0, 1) * scale_factor * 0.01)
+        noisy = clean + torch.stack(noise)
+        fbp = self.pseudoinverse(noisy)
+        return noisy, phantom, fbp
+
+    def grad(self, x, y):
+        return self.adjoint(self.operator(x) - y)

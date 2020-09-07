@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import layer_utils as utils
+import mean_field_VI.utils as utils
 
 class LinearVariance(nn.Linear):
     def __init__(self, in_features, out_features, bias):

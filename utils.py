@@ -15,14 +15,14 @@ from skimage.metrics import structural_similarity as compute_ssim
     blocks reconstructions
 '''
 
-def next_step_update(dataset, data_tensor, model, device, flag='train'):
+def next_step_update(dataset, data_tensor, block, device, flag='train'):
     X_ = []
     with torch.no_grad():
         dataloader = DataLoader(deepcopy(data_tensor), batch_size=64, shuffle=False, drop_last=False)
         for (data, grad, target) in dataloader:
             data, grad, target = data.to(device), grad.to(device), target.to(device)
-            model.eval()
-            X_.append(model.forward(data, grad))
+            block.eval()
+            X_.append(block.forward(data, grad)[0])
         dataset.update(torch.cat(X_).cpu(), flag=flag)
 
         info = {'RMSE': torch.sqrt(F.mse_loss(dataset.X_[flag], dataset.data[flag][1])).cpu().numpy()}
@@ -31,28 +31,25 @@ def next_step_update(dataset, data_tensor, model, device, flag='train'):
 def get_stats(dataset, blocks_history, device, dir_path, save_data=True):
     start = time.time()
     with torch.no_grad():
-        mc_samples = []
-        for _ in range(100):
-            for block in blocks_history['model']:
+        mc_samples_mean, mc_samples_var = [], []
+        for _ in range(2):
+            for block in blocks_history['block']:
                 block.eval()
                 test_tensor = dataset.construct(flag='test', display=False)
                 dataloader = DataLoader(deepcopy(test_tensor), batch_size=64, shuffle=False, drop_last=False)
-                X_ = []
+                X_, Var_ = [], []
                 for batch_idx, (data, grad, target) in enumerate(dataloader):
                     data, grad, target = data.to(device), grad.to(device), target.to(device)
-                    output = block.forward(data, grad)
-                    X_.append(output)
+                    output, var = block.forward(data, grad)
+                    X_.append(output); Var_.append(var)
                 dataset.update(torch.cat(X_).cpu(), flag='test')
-            mc_samples.append(dataset.X_['test'])
+            mc_samples_mean.append(dataset.X_['test'])
+            mc_samples_var.append(torch.cat(Var_))
             dataset.reset('test')
 
         print('time: {}'.format(time.time() - start))
-        mean = torch.mean(torch.stack(mc_samples), dim=0)
-
-        if hasattr(block, 'log_noise'):
-            std = torch.sqrt(torch.std(torch.stack(mc_samples), dim=0)**2 + block.log_noise.exp().cpu()**2)
-        else:
-            raise NotImplementedError
+        mean = torch.mean(torch.stack(mc_samples_mean), dim=0)
+        std = torch.sqrt(torch.std(torch.stack(mc_samples_mean), dim=0)**2 + torch.mean(torch.stack(mc_samples_var)))
 
         if save_data:
             filename = 'data' + '.p'
@@ -84,8 +81,8 @@ def get_stats(dataset, blocks_history, device, dir_path, save_data=True):
         f.write(string_out + '\n\n')
         print(string_out, flush=True)
 
-def save_net(model, filepath):
-     torch.save(model.state_dict(), filepath)
+def save_net(block, filepath):
+     torch.save(block.state_dict(), filepath)
 
 '''
     visualizer - logger
