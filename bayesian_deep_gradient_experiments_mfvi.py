@@ -95,7 +95,7 @@ def main():
         operator = odl.tomo.RayTransform(space, geometry)
         opnorm = odl.power_method_opnorm(operator)
         img_mode.operator = odl_torch.OperatorModule( (1 / opnorm) * operator )
-        img_mode.adjoint = odl_torch.OperatorModule(operator.adjoint)
+        img_mode.adjoint = odl_torch.OperatorModule( (1 / opnorm) * operator.adjoint)
         pseudoinverse = odl.tomo.fbp_op(operator)
         pseudoinverse = odl_torch.OperatorModule( pseudoinverse * opnorm )
         img_mode.pseudoinverse = pseudoinverse
