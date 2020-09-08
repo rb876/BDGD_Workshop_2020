@@ -6,6 +6,7 @@ import argparse
 import time
 import numpy as np
 import pickle
+import json
 from torch.utils.data import DataLoader
 from distutils.util import strtobool
 
@@ -51,6 +52,10 @@ def main():
                         help='initial_lr')
     parser.add_argument('--val_batch_size', type=int, default=128,
                         help='input batch size for valing')
+    parser.add_argument('--arch_args', type=json.loads, default=dict(),
+                        help='load architecture dictionary')
+    parser.add_argument('--block_type', type=str, default='bayesian_homo',
+                        help='deterministic, bayesian_homo, bayesian_hetero')
 
     # forward models setting
     parser.add_argument('--size', type=int, default=128,
@@ -62,8 +67,15 @@ def main():
                         help='disables CUDA training')
     parser.add_argument('--seed', type=int, default=222,
                         help='random seed')
+    parser.add_argument('--config', default='configs/bayesian_arch_config.json',
+                        help='config file path')
 
     args = parser.parse_args()
+    if args.config is not None:
+        with open(args.config) as handle:
+            config = json.load(handle)
+        vars(args).update(config)
+
     block_utils.set_gpu_mode(True)
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -99,11 +111,19 @@ def main():
     dataset = DataSet(data, img_mode, args.pseudo_inverse_init)
 
     optim_parms = {'epochs':args.epochs, 'initial_lr':  args.initial_lr, 'batch_size': args.batch_size}
-    from blocks import BlockHetero as Block
+
+    if args.block_type == 'deterministic':
+        from blocks import DeterministicBlock as Block
+    elif args.block_type == 'bayesian_homo':
+        from blocks import BlockHomo as Block
+    elif args.block_type == 'bayesian_hetero':
+        from blocks import BlockHetero as Block
+    else:
+        raise NotImplementedError
 
     # results directory
     path = os.path.dirname(__file__)
-    dir_path = os.path.join(path, 'results', args.img_mode, 'MFVI', str(args.train_size), geometry_specs, str(args.seed))
+    dir_path = os.path.join(path, 'results', args.img_mode, args.block_type, str(args.train_size), geometry_specs, str(args.seed))
     if not os.path.isdir(dir_path):
         os.makedirs(dir_path)
 
@@ -114,28 +134,6 @@ def main():
     print('===========================\n', flush=True)
 
     blocks_history = {'block': [], 'optimizer': []}
-    arch_args = {
-      'mean': {
-        'upper': [
-          [1, 16, 3, 1, 1],
-          [16, 32, 3, 1, 1]
-        ],
-        'lower': [
-          [1, 16, 3, 1, 1],
-          [16, 32, 3, 1, 1]
-        ],
-        'common': [
-          [64, 32, 3, 1, 1],
-          [32, 16, 3, 1, 1],
-          [16, 1, 3, 1]
-        ]
-      },
-      'variance': [
-        [2, 16, 3, 1, 1],
-        [16, 8, 3, 1, 1],
-        [8, 1, 3, 1]
-      ]
-    }
     # savings training procedures
     filename = 'train_phase'
     filepath = os.path.join(dir_path, filename)
@@ -153,7 +151,7 @@ def main():
         train_loader = DataLoader(train_tensor, batch_size=args.batch_size, shuffle=True)
         val_loader = DataLoader(val_tensor, batch_size=args.val_batch_size, shuffle=True)
 
-        block = Block(arch_args)
+        block = Block(args.arch_args)
         block = block.to(device)
         block.optimise(train_loader, **optim_parms)
 
