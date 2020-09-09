@@ -43,10 +43,10 @@ class DeterministicBlock(DeterministicTrainer):
         return F.relu(x + skip), utils.to_gpu(torch.ones(1))
 
     def compute_loss(self, x, x_pred, batch_size, data_size, var):
-        log_likelihood = self.compute_log_likelihood(x, x_pred, var)
+        log_likelihood = self._compute_log_likelihood(x, x_pred, var)
         return -log_likelihood
 
-    def compute_log_likelihood(self, x, x_pred, var):
+    def _compute_log_likelihood(self, x, x_pred, var):
         return torch.sum(utils.gaussian_log_density(inputs=utils._squeeze(x), mean=utils._squeeze(x_pred), variance=var), dim=0)
 
 class BlockHomo(BayesianTrainer):
@@ -91,15 +91,15 @@ class BlockHomo(BayesianTrainer):
 
     def compute_loss(self, x, x_pred, batch_size, data_size, var):
         # The objective is 1/n * (\sum_i log_like_i - KL)
-        log_likelihood = self.compute_log_likelihood(x, x_pred, var)
-        kl = self.compute_kl() * (batch_size / data_size)
+        log_likelihood = self._compute_log_likelihood(x, x_pred, var)
+        kl = self._compute_kl() * (batch_size / data_size)
         elbo = log_likelihood - kl
         return -elbo, kl
 
-    def compute_kl(self):
+    def _compute_kl(self):
         return self.bayes_CNN.compute_kl()
 
-    def compute_log_likelihood(self, x, x_pred, var):
+    def _compute_log_likelihood(self, x, x_pred, var):
         return torch.sum(utils.gaussian_log_density(inputs=utils._squeeze(x), mean=utils._squeeze(x_pred), variance=var), dim=0)
 
 
@@ -160,13 +160,13 @@ class BlockHetero(BayesianTrainer):
 
     def compute_loss(self, x, x_pred, batch_size, data_size, var):
         # The objective is 1/n * (\sum_i log_like_i - KL)
-        log_likelihood = self.compute_log_likelihood(x, x_pred, var)
-        kl = self.compute_kl() * (batch_size / data_size)
+        log_likelihood = self._compute_log_likelihood(x, x_pred, var)
+        kl = self._compute_kl() * (batch_size / data_size)
         elbo = log_likelihood - kl
         return -elbo, kl
 
-    def compute_kl(self):
+    def _compute_kl(self):
         return self.bayes_CNN_mean.compute_kl() + self.bayes_CNN_log_std.compute_kl()
 
-    def compute_log_likelihood(self, x, x_pred, var):
+    def _compute_log_likelihood(self, x, x_pred, var):
         return torch.sum(utils.gaussian_log_density(inputs=utils._squeeze(x), mean=utils._squeeze(x_pred), variance=utils._squeeze(var)), dim=0)

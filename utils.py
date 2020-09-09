@@ -44,12 +44,12 @@ def get_stats(dataset, blocks_history, device, dir_path, save_data=True):
                     X_.append(output); Var_.append(var)
                 dataset.update(torch.cat(X_).cpu(), flag='test')
             mc_samples_mean.append(dataset.X_['test'])
-            mc_samples_var.append(torch.cat(Var_))
+            mc_samples_var.append(torch.cat(Var_).cpu())
             dataset.reset('test')
 
         print('time: {}'.format(time.time() - start))
         mean = torch.mean(torch.stack(mc_samples_mean), dim=0)
-        std = torch.sqrt(torch.std(torch.stack(mc_samples_mean), dim=0)**2 + torch.mean(torch.stack(mc_samples_var)))
+        std = torch.sqrt( torch.std(torch.stack(mc_samples_mean), dim=0)**2 + torch.mean( torch.stack(mc_samples_var), dim=0 ))
 
         if save_data:
             filename = 'data' + '.p'
@@ -174,7 +174,7 @@ class TrainVisualiser:
     def __init__(self, filename):
         self.filename = filename
         self.img_ = {}
-        self.idx = 10
+        self.idx = -1
 
     @counted
     def update(self, dataset, flag):

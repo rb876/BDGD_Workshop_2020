@@ -25,7 +25,7 @@ class DeterministicTrainer(nn.Module):
                 step_loss.backward()
                 optimizer.step()
                 # evaluation
-                rmse, psnr = self.evaluate_performance(target, x_pred)
+                rmse, psnr = self._evaluate_performance(target, x_pred)
                 losses.append(step_loss.cpu().item())
                 rmses.append(rmse)
                 psnrs.append(psnr)
@@ -33,7 +33,7 @@ class DeterministicTrainer(nn.Module):
             print('epoch: {}, loss: {:.4f}, rmse: {:.8f}, psnr: {:.8f}'\
                 .format(epoch, np.mean(losses), np.mean(rmses), np.mean(psnrs)), flush=True)
 
-    def evaluate_performance(self, x, x_pred):
+    def _evaluate_performance(self, x, x_pred):
         from math import log10
         return (torch.sqrt(torch.mean((x - x_pred) ** 2)).cpu().item(), 10
                 * log10(1 / torch.mean((x - x_pred) ** 2)))
@@ -62,7 +62,7 @@ class BayesianTrainer(nn.Module):
                 step_loss.backward()
                 optimizer.step()
                 # evaluation
-                rmse, psnr = self.evaluate_performance(target, x_pred)
+                rmse, psnr = self._evaluate_performance(target, x_pred)
                 losses.append(step_loss.cpu().item())
                 kls.append(kl.cpu().item())
                 rmses.append(rmse)
@@ -71,7 +71,7 @@ class BayesianTrainer(nn.Module):
             print('epoch: {}, loss: {:.4f}, kl: {:.4f}, rmse: {:.8f}, psnr: {:.8f}'\
                 .format(epoch, np.mean(losses), np.mean(kls), np.mean(rmses), np.mean(psnrs)), flush=True)
 
-    def evaluate_performance(self, x, x_pred):
+    def _evaluate_performance(self, x, x_pred):
         from math import log10
         return (torch.sqrt(torch.mean((x - x_pred) ** 2)).cpu().item(), 10
                 * log10(1 / torch.mean((x - x_pred) ** 2)))

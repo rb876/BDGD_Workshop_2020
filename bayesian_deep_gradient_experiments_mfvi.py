@@ -42,6 +42,8 @@ def main():
                         help=' image-modality reconstruction: SimpleCT')
     parser.add_argument('--train_size', type=int, default=4000,
                         help='dataset size')
+    parser.add_argument('--dataset_type', type=str, default='GenEllipsesSamples',
+                        help='GenEllipsesSamples or GenFoamSamples')
     parser.add_argument('--pseudo_inverse_init', type = lambda x:bool(strtobool(x)), default=True,
                         help='initialise with pseudoinverse')
     parser.add_argument('--epochs', type=int, default=150,
@@ -56,6 +58,10 @@ def main():
                         help='load architecture dictionary')
     parser.add_argument('--block_type', type=str, default='bayesian_homo',
                         help='deterministic, bayesian_homo, bayesian_hetero')
+    parser.add_argument('--save', type= lambda x:bool(strtobool(x)), default=True,
+                        help='save model')
+    parser.add_argument('--load', type= lambda x:bool(strtobool(x)), default=False,
+                        help='save model')
 
     # forward models setting
     parser.add_argument('--size', type=int, default=128,
@@ -102,9 +108,9 @@ def main():
 
         geometry_specs = 'full_view_sparse_' + str(args.beam_num_angle)
         dataset_name = 'dataset' + '_' + args.img_mode + '_' + str(args.size) \
-        + '_' + str(args.train_size) + '_' + geometry_specs
+        + '_' + str(args.train_size) + '_' + geometry_specs + '_' + args.dataset_type
 
-        data_constructor = DatasetConstructor(img_mode, train_size=args.train_size, dataset_name=dataset_name)
+        data_constructor = DatasetConstructor(img_mode, train_size=args.train_size, dataset_name=dataset_name, dataset_type=args.dataset_type)
         data = data_constructor.data()
     else:
         raise NotImplementedError
@@ -123,7 +129,7 @@ def main():
 
     # results directory
     path = os.path.dirname(__file__)
-    dir_path = os.path.join(path, 'results', args.img_mode, args.block_type, str(args.train_size), geometry_specs, str(args.seed))
+    dir_path = os.path.join(path, 'results', args.img_mode, args.block_type, args.dataset_type, str(args.train_size), geometry_specs, str(args.seed))
     if not os.path.isdir(dir_path):
         os.makedirs(dir_path)
 
@@ -153,6 +159,12 @@ def main():
 
         block = Block(args.arch_args)
         block = block.to(device)
+
+        path_block = os.path.join(dir_path, str(idx) + '.pt')
+        if args.load and \
+            os.path.exists(path_block):
+            block.load_state_dict( torch.load(path_block) )
+
         block.optimise(train_loader, **optim_parms)
 
         start = time.time()
@@ -177,6 +189,10 @@ def main():
         if not os.path.isdir(resonstruction_dir_path):
             os.makedirs(resonstruction_dir_path)
         get_stats(dataset, blocks_history, device, resonstruction_dir_path)
+
+        if args.save and \
+            not args.load:
+            torch.save(block.state_dict(), os.path.join(dir_path, str(idx) + '.pt'))
 
     print('--- training time: %s seconds ---' % (time.time() - start_time), flush=True)
     vis.generate()

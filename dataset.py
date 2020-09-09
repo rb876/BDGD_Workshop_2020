@@ -3,7 +3,6 @@ import torch
 import numpy as np
 from torch.utils.data import TensorDataset
 from copy import deepcopy
-from PIL import Image, ImageFont, ImageDraw
 
 class DataSetBase:
     __metaclass__ = abc.ABCMeta
