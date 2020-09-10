@@ -53,11 +53,10 @@ class SimpleCT(ForwardModel):
 
     def sinogram(self, phantom):
         clean = self.operator(phantom)
-        noise = []
-        for el in clean:
-            scale_factor = torch.mean(torch.abs(el))
-            noise.append(clean.data.new(el.size()).normal_(0, 1) * scale_factor * 0.01)
-        noisy = clean + torch.stack(noise)
+        scale = torch.abs(clean).view(clean.shape[0], -1).mean(1, keepdim=True)
+        noise = clean.data.new( clean.size()).normal_(0, 1) * \
+            scale.view(-1, 1, 1).repeat(1, clean.shape[-2], clean.shape[-1]) * 0.01
+        noisy = clean + noise
         fbp = self.pseudoinverse(noisy)
         return noisy, phantom, fbp
 
