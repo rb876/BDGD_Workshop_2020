@@ -4,6 +4,7 @@ import odl
 import time
 import numpy as np
 import foam_ct_phantom
+from torchvision import transforms
 
 class GenEllipsesSamples:
     def __init__(self, space):
@@ -54,7 +55,24 @@ class GenFoamSamples:
             filename_volume = os.path.join(path, 'midslice_' + str(idx) + '.h5')
             phantom.generate_volume(filename_volume, geom)
             X_.append( torch.from_numpy( foam_ct_phantom.load_volume(filename_volume).squeeze() ) )
-        return X_
+
+        if not test:
+            # data augmentation
+            aug_fct = 4
+            f = lambda x: transforms.Compose([  transforms.ToPILImage(), \
+                                                transforms.RandomHorizontalFlip(), \
+                                                transforms.RandomVerticalFlip(), \
+                                                transforms.RandomResizedCrop( (self.space.shape[0], self.space.shape[1]) ), \
+                                                transforms.ToTensor()
+                                                ])(x)
+            X = torch.stack(X_)
+            N, H, W = X.shape[-3], X.shape[-2], X.shape[-1]
+            X = X.unsqueeze(dim=0).expand(aug_fct, N, H, W).reshape(aug_fct*N, H, W)
+            X = torch.stack([f(tensor).squeeze() for tensor in X])
+        else:
+            X = torch.stack(X_)
+
+        return X
 
 class DatasetConstructor:
     def __init__(self, img_mode, train_size, dataset_name=None, dataset_type='GenFoamSamples'):
@@ -92,7 +110,7 @@ class DatasetConstructor:
         if self.dataset_type == GenEllipsesSamples.__name__:
             phantom = torch.stack([torch.from_numpy(self.gen_train_samples._get_smpl()) for _ in range(num_reps)])
         elif self.dataset_type == GenFoamSamples.__name__:
-            phantom = torch.stack(self.gen_train_samples._get_smpl(num_reps, test))
+            phantom = self.gen_train_samples._get_smpl(num_reps, test)
         else:
             NotImplementedError
 
