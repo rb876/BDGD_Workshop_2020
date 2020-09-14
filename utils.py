@@ -32,7 +32,7 @@ def get_stats(dataset, blocks_history, device, dir_path, save_data=True):
     start = time.time()
     with torch.no_grad():
         mc_samples_mean, mc_samples_var = [], []
-        for _ in range(2):
+        for _ in range(100):
             for block in blocks_history['block']:
                 block.eval()
                 test_tensor = dataset.construct(flag='test', display=False)
@@ -49,7 +49,11 @@ def get_stats(dataset, blocks_history, device, dir_path, save_data=True):
 
         print('time: {}'.format(time.time() - start))
         mean = torch.mean(torch.stack(mc_samples_mean), dim=0)
-        std = torch.sqrt( torch.std(torch.stack(mc_samples_mean), dim=0)**2 + torch.mean( torch.stack(mc_samples_var), dim=0 ))
+
+        if hasattr(block, 'bayes_CNN_log_std'):
+            std = torch.sqrt( torch.std(torch.stack(mc_samples_mean), dim=0)**2 + torch.mean(torch.stack(mc_samples_var), dim=0) )
+        else:
+            std = torch.sqrt( torch.std(torch.stack(mc_samples_mean), dim=0)**2 + torch.mean(torch.stack(mc_samples_var), dim=0)[-1] )
 
         if save_data:
             filename = 'data' + '.p'

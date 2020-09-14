@@ -129,7 +129,7 @@ def main():
 
     # results directory
     path = os.path.dirname(__file__)
-    dir_path = os.path.join(path, 'results', args.img_mode, args.block_type, args.dataset_type, str(args.train_size), geometry_specs, str(args.seed))
+    dir_path = os.path.join(path, 'results', args.img_mode, args.block_type, args.dataset_type, str(args.train_size), geometry_specs, str(args.size), str(args.seed))
     if not os.path.isdir(dir_path):
         os.makedirs(dir_path)
 
