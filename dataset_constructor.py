@@ -31,7 +31,7 @@ class GenFoamSamples:
     def __init__(self, space):
         self.space = space
 
-    def _get_smpl(self, num_reps, test, path='./datasets/foam_phantoms'):
+    def _get_smpl(self, num_reps, test, path='./datasets/foam_phantoms', data_augmentation=False):
         flag = 'train' if test == False else 'test'
         path = os.path.join(path, flag)
 
@@ -56,7 +56,8 @@ class GenFoamSamples:
             phantom.generate_volume(filename_volume, geom)
             X_.append( torch.from_numpy( foam_ct_phantom.load_volume(filename_volume).squeeze() ) )
 
-        if not test:
+        if not test and \
+            data_augmentation:
             # data augmentation
             aug_fct = 4
             f = lambda x: transforms.Compose([  transforms.ToPILImage(), \
@@ -98,7 +99,7 @@ class DatasetConstructor:
 
     def _dataset(self):
         trainY, trainX, train_initX = self._get_train(num_reps=self.train_size, threads=4)
-        testY, testX, test_initX  = self._get_train(num_reps=10, threads=4, test=True)
+        testY, testX, test_initX  = self._get_train(num_reps=100, threads=4, test=True)
         data = {'train': (trainY, trainX, train_initX),\
             'test': (testY, testX, test_initX), 'validation': (testY, testX, test_initX)}
         print('data generated -- training size {} \n'.format(self.train_size), flush=True)

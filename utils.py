@@ -77,7 +77,7 @@ def get_stats(dataset, blocks_history, device, dir_path, save_data=True):
             f.write(string_out + '\n')
             print('img idx {} - PSNR: {:.4f}, SSIM:{:.4f}'.format(idx, psnr, ssim), flush=True)
 
-        string_out = 'average PSNR: {:.4f}, average SSIM:{:.4f}'.format(np.mean(psnr_[:-1]), np.mean(ssim_[:-1]))
+        string_out = 'average PSNR: {:.4f}, average SSIM:{:.4f}'.format(np.mean(psnr_), np.mean(ssim_))
         f.write(string_out + '\n\n')
         print(string_out, flush=True)
 
