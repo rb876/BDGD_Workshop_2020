@@ -66,22 +66,17 @@ def get_stats(dataset, blocks_history, device, dir_path, save_data=True):
         filepath = os.path.join(dir_path, filename)
         f = open(filepath, 'a')
 
-        psnr_, ssim_ = [], []
+        psnr_ = []
         for idx, (m, s) in enumerate(zip(mean, std)):
-            simple_visualise(m, os.path.join(dir_path, 'mean_' + str(idx) + '.png'), gray=True)
-            simple_visualise(s, os.path.join(dir_path, 'std_' + str(idx) + '.png'), gray=False)
-            psnr = compute_psnr(dataset.data['test'][1][idx].squeeze(dim=0).cpu().numpy(),
-                                m.squeeze(dim=0).cpu().numpy(), data_range=1)
-            ssim = compute_ssim(dataset.data['test'][1][idx].squeeze(dim=0).cpu().numpy(),
-                                m.squeeze(dim=0).cpu().numpy(), data_range=1)
-
+            # simple_visualise(m, os.path.join(dir_path, 'mean_' + str(idx) + '.png'), gray=True)
+            # simple_visualise(s, os.path.join(dir_path, 'std_' + str(idx) + '.png'), gray=False)
+            psnr = compute_psnr(dataset.data['test'][1][idx].squeeze(dim=0).numpy(), m.squeeze(dim=0).numpy(), data_range=1)
             psnr_.append(psnr)
-            ssim_.append(ssim)
-            string_out = 'img idx {} - PSNR: {:.4f}, SSIM:{:.4f}'.format(idx, psnr, ssim)
+            string_out = 'img idx {} - PSNR: {:.4f}'.format(idx, psnr)
             f.write(string_out + '\n')
-            print('img idx {} - PSNR: {:.4f}, SSIM:{:.4f}'.format(idx, psnr, ssim), flush=True)
+            print('img idx {} - PSNR: {:.4f}'.format(idx, psnr), flush=True)
 
-        string_out = 'average PSNR: {:.4f}, average SSIM:{:.4f}'.format(np.mean(psnr_), np.mean(ssim_))
+        string_out = 'average PSNR: {:.4f}'.format( np.mean(psnr_) )
         f.write(string_out + '\n\n')
         print(string_out, flush=True)
 
