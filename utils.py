@@ -2,6 +2,7 @@ import os
 import torch.nn.functional as F
 import numpy as np
 import torch
+import odl
 import pickle
 import time
 import matplotlib.pyplot as plt
@@ -10,6 +11,20 @@ from torch.utils.data import TensorDataset, DataLoader
 from copy import deepcopy
 from skimage.metrics import peak_signal_noise_ratio as compute_psnr
 from skimage.metrics import structural_similarity as compute_ssim
+
+
+def limited_view_parallel_beam_geometry(space, beam_num_angle):
+    corners = space.domain.corners()[:, :2]
+    rho = np.max(np.linalg.norm(corners, axis=1))
+    min_side = min(space.partition.cell_sides[:2])
+    omega = np.pi / min_side
+    num_px_horiz = 2 * int(np.ceil(rho * omega / np.pi)) + 1
+    det_min_pt = -rho
+    det_max_pt = rho
+    det_shape = num_px_horiz
+    angle_partition = odl.uniform_partition(0, beam_num_angle*(np.pi/180), beam_num_angle)
+    det_partition = odl.uniform_partition(det_min_pt, det_max_pt, det_shape)
+    return odl.tomo.Parallel2dGeometry(angle_partition, det_partition)
 
 '''
     blocks reconstructions

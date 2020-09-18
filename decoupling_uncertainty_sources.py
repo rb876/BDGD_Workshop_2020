@@ -9,6 +9,7 @@ import pickle
 import json
 from torch.utils.data import DataLoader
 from distutils.util import strtobool
+from copy import deepcopy
 
 # torch imports
 import torch
@@ -58,10 +59,6 @@ def main():
                         help='load architecture dictionary')
     parser.add_argument('--block_type', type=str, default='bayesian_homo',
                         help='deterministic, bayesian_homo, bayesian_hetero')
-    parser.add_argument('--save', type= lambda x:bool(strtobool(x)), default=True,
-                        help='save model')
-    parser.add_argument('--load', type= lambda x:bool(strtobool(x)), default=False,
-                        help='save model')
 
     # forward models setting
     parser.add_argument('--size', type=int, default=128,
@@ -101,7 +98,7 @@ def main():
         if not args.limited_view:
             geometry = odl.tomo.parallel_beam_geometry(space, num_angles=args.beam_num_angle)
         elif args.limited_view:
-            geometry = limited_view_parallel_beam_geometry(space, beam_num_angle=args.beam_num_angle)
+            geometry = utils.limited_view_parallel_beam_geometry(space, beam_num_angle=args.beam_num_angle)
         else:
             raise NotImplementedError
         img_mode.geometry = geometry
@@ -146,63 +143,68 @@ def main():
         print('{}: {}'.format(key, val), flush=True)
     print('===========================\n', flush=True)
 
-    blocks_history = {'block': [], 'optimizer': []}
-    # savings training procedures
-    filename = 'train_phase'
-    filepath = os.path.join(dir_path, filename)
-    vis = TrainVisualiser(filepath)
-
+    blocks_history = {'block': []}
     start_time = time.time()
     # looping through architecture-blocs
     for idx in range(1, args.k_max + 1):
 
         print('============== training block number: {} ============= \n'.format(idx), flush=True)
 
-        train_tensor =  dataset.construct(flag='train')
-        val_tensor = dataset.construct(flag='validation')
-
-        train_loader = DataLoader(train_tensor, batch_size=args.batch_size, shuffle=True)
-        val_loader = DataLoader(val_tensor, batch_size=args.val_batch_size, shuffle=True)
-
         block = Block(args.arch_args)
         block = block.to(device)
 
         path_block = os.path.join(dir_path, str(idx) + '.pt')
-        if args.load and \
-            os.path.exists(path_block):
+        if os.path.exists(path_block):
             block.load_state_dict( torch.load(path_block) )
+        else:
+            raise NotImplementedError
 
-        block.optimise(train_loader, **optim_parms)
-
-        start = time.time()
-        info = next_step_update(dataset, train_tensor, block, device, flag='train')
-        end = time.time()
-        print('============= {} {:.4f} ============= \n'.format('training reconstruction', end-start), flush=True)
-        for key in info.keys():
-            print('{}: {} \n'.format(key, info[key]), flush=True)
-
-        start = time.time()
-        info = next_step_update(dataset, val_tensor, block, device, flag='validation')
-        end = time.time()
-        print('============= {} {:.4f} ============= \n'.format('validation reconstruction', end-start), flush=True)
-        for key in info.keys():
-            print('{}: {} \n'.format(key, info[key]), flush=True)
-
-        vis.update(dataset, flag='validation')
         blocks_history['block'].append(block)
 
-        # reconstruction
-        resonstruction_dir_path = os.path.join(dir_path, str(idx))
-        if not os.path.isdir(resonstruction_dir_path):
-            os.makedirs(resonstruction_dir_path)
-        get_stats(dataset, blocks_history, device, resonstruction_dir_path)
+    start = time.time()
+    with torch.no_grad():
+        mc_samples_mean, mc_samples_var = [], []
+        for _ in range(100):
+            for block in blocks_history['block']:
+                block.eval()
+                test_tensor = dataset.construct(flag='test', display=False)
+                dataloader = DataLoader(deepcopy(test_tensor), batch_size=64, shuffle=False, drop_last=False)
+                X_, Var_ = [], []
+                for batch_idx, (data, grad, target) in enumerate(dataloader):
+                    data, grad, target = data.to(device), grad.to(device), target.to(device)
+                    output, var = block.forward(data, grad)
+                    X_.append(output); Var_.append(var)
+                dataset.update(torch.cat(X_).cpu(), flag='test')
+            mc_samples_mean.append(dataset.X_['test'])
+            mc_samples_var.append(torch.cat(Var_).cpu())
+            dataset.reset('test')
 
-        if args.save and \
-            not args.load:
-            torch.save(block.state_dict(), os.path.join(dir_path, str(idx) + '.pt'))
+        print('time: {}'.format(time.time() - start))
+        mean = torch.mean(torch.stack(mc_samples_mean), dim=0)
+        if hasattr(block, 'bayes_CNN_log_std'):
+            epistemic = torch.std(torch.stack(mc_samples_mean), dim=0)**2
+            aleatoric = torch.mean(torch.stack(mc_samples_var), dim=0)
+            std = torch.sqrt( torch.std(torch.stack(mc_samples_mean), dim=0)**2 + torch.mean(torch.stack(mc_samples_var), dim=0) )
+        else:
+            raise NotImplementedError
+
+        dir_path = os.path.join(dir_path, 'uncertainty analysis')
+        if not os.path.isdir(dir_path):
+            os.makedirs(dir_path)
+        filename = 'data' + '.p'
+        filepath = os.path.join(dir_path, filename)
+        with open(filepath, 'wb') as handle:
+            pickle.dump({'mean': mean, 'aleatoric': aleatoric, 'epistemic': epistemic, 'std': std}, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        handle.close()
+
+    # reconstruction
+    resonstruction_dir_path = os.path.join(dir_path, str(idx))
+    if not os.path.isdir(resonstruction_dir_path):
+        os.makedirs(resonstruction_dir_path)
+    get_stats(dataset, blocks_history, device, resonstruction_dir_path)
 
     print('--- training time: %s seconds ---' % (time.time() - start_time), flush=True)
-    vis.generate()
+
 
 if __name__ == '__main__':
     main()
