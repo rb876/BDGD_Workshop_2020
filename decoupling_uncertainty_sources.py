@@ -98,7 +98,7 @@ def main():
         if not args.limited_view:
             geometry = odl.tomo.parallel_beam_geometry(space, num_angles=args.beam_num_angle)
         elif args.limited_view:
-            geometry = utils.limited_view_parallel_beam_geometry(space, beam_num_angle=args.beam_num_angle)
+            geometry = limited_view_parallel_beam_geometry(space, beam_num_angle=args.beam_num_angle)
         else:
             raise NotImplementedError
         img_mode.geometry = geometry
