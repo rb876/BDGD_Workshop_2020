@@ -191,7 +191,7 @@ def main():
         dir_path = os.path.join(dir_path, 'uncertainty analysis')
         if not os.path.isdir(dir_path):
             os.makedirs(dir_path)
-        filename = 'data' + '.p'
+        filename = 'data' + '_' + args.k_max +'.p'
         filepath = os.path.join(dir_path, filename)
         with open(filepath, 'wb') as handle:
             pickle.dump({'mean': mean, 'aleatoric': aleatoric, 'epistemic': epistemic, 'std': std}, handle, protocol=pickle.HIGHEST_PROTOCOL)
