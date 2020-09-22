@@ -3,7 +3,6 @@ import torch
 import odl
 import time
 import numpy as np
-import foam_ct_phantom
 from torchvision import transforms
 
 class GenEllipsesSamples:
