@@ -171,8 +171,12 @@ def main():
         if args.load and \
             os.path.exists(path_block):
             block.load_state_dict( torch.load(path_block) )
+            loaded = True
+            print('============= loaded idx: {} ============='.format(idx), flush=True)
 
-        block.optimise(train_loader, **optim_parms)
+        else:
+            block.optimise(train_loader, **optim_parms)
+            loaded = False
 
         start = time.time()
         info = next_step_update(dataset, train_tensor, block, device, flag='train')
@@ -193,12 +197,12 @@ def main():
 
         # reconstruction
         resonstruction_dir_path = os.path.join(dir_path, str(idx))
-        if not os.path.isdir(resonstruction_dir_path):
-            os.makedirs(resonstruction_dir_path)
-        get_stats(dataset, blocks_history, device, resonstruction_dir_path)
+        if not loaded:
+            if not os.path.isdir(resonstruction_dir_path):
+                os.makedirs(resonstruction_dir_path)
+            get_stats(dataset, blocks_history, device, resonstruction_dir_path)
 
-        if args.save and \
-            not args.load:
+        if args.save and not loaded:
             torch.save(block.state_dict(), os.path.join(dir_path, str(idx) + '.pt'))
 
     print('--- training time: %s seconds ---' % (time.time() - start_time), flush=True)
